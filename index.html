@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Système de Notifications Grist-Matrix</title>
+    
+    <style>
+        /* Variables CSS globales */
+        :root {
+            --primary-color: #20B2AA;
+            --secondary-color: #5DADE2;
+            --background-color: #f5f6fa;
+            --text-color: #2c3e50;
+            --border-color: #e1e4e8;
+            --shadow-light: 0 2px 4px rgba(0,0,0,0.1);
+            --shadow-medium: 0 4px 8px rgba(0,0,0,0.15);
+            --border-radius: 8px;
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-medium);
+            overflow: hidden;
+        }
+
+        /* Navigation tabs */
+        .tabs-navigation {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 15px;
+            background: transparent;
+            border: none;
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .tab-button:hover {
+            background: rgba(32, 178, 170, 0.1);
+        }
+
+        .tab-button.active {
+            color: var(--primary-color);
+            background: white;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary-color);
+        }
+
+        /* Tab content */
+        .tab-content {
+            padding: 30px;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* PAGE 1: Formulaire de notification */
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 15px;
+        }
+
+        /* Recipients tags */
+        .recipients-container {
+            background: #f8f9fa;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 10px;
+            min-height: 60px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .recipient-tag {
+            display: inline-flex;
+            align-items: center;
+            background: #c8f7f5;
+            color: #0e7c7b;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            gap: 8px;
+        }
+
+        .recipient-tag.group {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .recipient-tag .remove-btn {
+            background: transparent;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .recipient-tag .remove-btn:hover {
+            background: rgba(0,0,0,0.1);
+        }
+
+        .add-recipient-btn {
+            background: transparent;
+            border: 1px dashed #999;
+            color: #666;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .add-recipient-btn:hover {
+            background: #f0f0f0;
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        /* Modal de recherche */
+        .search-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .search-modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: var(--border-radius);
+            padding: 25px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .close-modal {
+            background: transparent;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .search-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .search-result-item {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-result-item:hover {
+            background: #f8f9fa;
+            border-color: var(--primary-color);
+        }
+
+        .search-result-item.selected {
+            background: #c8f7f5;
+            border-color: var(--primary-color);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* Trigger section */
+        .trigger-option {
+            background: #d1f2eb;
+            padding: 15px;
+            border-radius: var(--border-radius);
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 2px solid transparent;
+        }
+
+        .trigger-option input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary-color);
+        }
+
+        .trigger-option.selected {
+            background: #a7e3db;
+            border-color: var(--primary-color);
+        }
+
+        .trigger-option:hover {
+            background: #b8e7de;
+        }
+
+        /* Message section */
+        .message-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        /* Submit button */
+        .submit-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: var(--border-radius);
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: block;
+            margin: 30px auto 0;
+            box-shadow: var(--shadow-light);
+        }
+
+        .submit-btn:hover {
+            background: #1a9a92;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-medium);
+        }
+
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* PAGE 2: Historique des destinataires */
+        .recipients-list {
+            background: white;
+        }
+
+        .recipient-item {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: var(--transition);
+        }
+
+        .recipient-item:hover {
+            background: #f8f9fa;
+        }
+
+        .recipient-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .recipient-info {
+            flex: 1;
+        }
+
+        .recipient-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .recipient-id {
+            font-size: 13px;
+            color: #666;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .recipient-room-id {
+            font-size: 12px;
+            color: #999;
+            margin-top: 3px;
+        }
+
+        /* Status indicators */
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+        }
+
+        /* Loading spinner */
+        .loading-spinner {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        .loading-spinner.active {
+            display: block;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Notification toast */
+        .notification-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-medium);
+            display: none;
+            align-items: center;
+            gap: 10px;
+            z-index: 2000;
+            min-width: 250px;
+        }
+
+        .notification-toast.show {
+            display: flex;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification-toast.success {
+            border-left: 4px solid #28a745;
+        }
+
+        .notification-toast.error {
+            border-left: 4px solid #dc3545;
+        }
+
+        .notification-toast.info {
+            border-left: 4px solid #17a2b8;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .empty-state-subtext {
+            font-size: 14px;
+            color: #bbb;
+        }
+
+        /* Configuration modal */
+        .config-section {
+            background: #f0f8ff;
+            padding: 15px;
+            border-radius: var(--border-radius);
+            margin-bottom: 20px;
+            border-left: 4px solid var(--secondary-color);
+        }
+
+        .config-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 14px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .config-btn {
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .config-btn:hover {
+            background: #4a9dd6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation tabs -->
+        <div class="tabs-navigation">
+            <button class="tab-button active" data-tab="notifications">Notifications</button>
+            <button class="tab-button" data-tab="destinataires">Destinataires</button>
+        </div>
+
+        <!-- PAGE 1: Notifications -->
+        <div id="notifications-tab" class="tab-content active">
+            <!-- Configuration Matrix (si nécessaire) -->
+            <div id="config-section" class="config-section" style="display: none;">
+                <h3 class="section-title">⚙️ Configuration Matrix</h3>
+                <p style="font-size: 14px; color: #666; margin-bottom: 10px;">
+                    Token Matrix non configuré. Veuillez entrer votre token d'accès :
+                </p>
+                <input type="text" id="matrix-token-input" class="config-input" placeholder="syt_xxxx...">
+                <button id="save-token-btn" class="config-btn">Sauvegarder le token</button>
+            </div>
+
+            <!-- Destinataires individuels -->
+            <div class="section">
+                <h3 class="section-title">Destinataires individuels</h3>
+                <div class="recipients-container" id="individual-recipients">
+                    <button class="add-recipient-btn" data-type="individual">
+                        ➕ Ajouter un destinataire...
+                    </button>
+                </div>
+            </div>
+
+            <!-- Destinataires groupés -->
+            <div class="section">
+                <h3 class="section-title">Destinataires groupés</h3>
+                <div class="recipients-container" id="group-recipients">
+                    <button class="add-recipient-btn" data-type="group">
+                        ➕ Ajouter un groupe...
+                    </button>
+                </div>
+            </div>
+
+            <!-- Déclenchement -->
+            <div class="section">
+                <h3 class="section-title">Déclenchement</h3>
+                <div class="trigger-option selected" data-trigger="new-row">
+                    <input type="radio" name="trigger" value="new-row" checked>
+                    <label>Nouvelle Ligne</label>
+                </div>
+                <div class="trigger-option" data-trigger="update">
+                    <input type="radio" name="trigger" value="update">
+                    <label>Mise à jour</label>
+                </div>
+                <div class="trigger-option" data-trigger="conditional">
+                    <input type="radio" name="trigger" value="conditional">
+                    <label>Mise à jour conditionnelle</label>
+                </div>
+            </div>
+
+            <!-- Message -->
+            <div class="section">
+                <h3 class="section-title">Message à envoyer</h3>
+                <textarea class="message-input" id="message-body" placeholder="Rédigez votre message ici..."></textarea>
+            </div>
+
+            <!-- Submit button -->
+            <button class="submit-btn" id="send-notification">
+                Activer la notification
+            </button>
+
+            <!-- Loading spinner -->
+            <div class="loading-spinner" id="loading-spinner"></div>
+        </div>
+
+        <!-- PAGE 2: Destinataires -->
+        <div id="destinataires-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Destinataires individuels</h3>
+                <div id="recipients-list" class="recipients-list">
+                    <!-- Les destinataires seront ajoutés dynamiquement ici -->
+                </div>
+            </div>
+
+            <div class="section">
+                <h3 class="section-title">Destinataires groupés</h3>
+                <div id="groups-list" class="recipients-list">
+                    <!-- Les groupes seront ajoutés dynamiquement ici -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de recherche -->
+    <div class="search-modal" id="search-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Rechercher un destinataire</h3>
+                <button class="close-modal" id="close-modal">✕</button>
+            </div>
+            <input type="text" class="search-input" id="modal-search-input" placeholder="Rechercher par nom ou email...">
+            <div class="search-results" id="search-results">
+                <!-- Les résultats de recherche seront ajoutés ici -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast de notification -->
+    <div class="notification-toast" id="notification-toast">
+        <span id="toast-message"></span>
+    </div>
+<script src="js/state.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/search.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
