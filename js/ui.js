@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Bouton d'envoi
     const sendBtn = document.getElementById('send-notification');
     if (sendBtn) {
-        sendBtn.addEventListener('click', () => {
+        sendBtn.addEventListener('click', async () => {
             const message = document.getElementById('message-body').value.trim();
             
             if (!message) {
@@ -108,8 +108,15 @@ document.addEventListener('DOMContentLoaded', async function() {
                 return;
             }
             
-            const totalRecipients = AppState.selectedIndividuals.length + AppState.selectedGroups.length;
-            showToast(`Notification activée pour ${totalRecipients} destinataire(s)`, 'success');
+            // Déclencher le workflow complet
+            const messageObject = {
+                subject: 'Notification Grist',
+                body: message,
+                triggerType: 'manual',
+                timestamp: new Date().toISOString()
+            };
+            
+            await NotificationManager.sendNotifications(messageObject);
         });
     }
 
