@@ -12,18 +12,75 @@ const MatrixAPI = {
         };
     },
 
+    // ========================================
+    // ### SECTION 1: RECHERCHE ###
+    // ========================================
+
     /**
-     * Recherche des utilisateurs Matrix
+     * Recherche un salon existant par son nom exact
      */
-    async searchUsers(searchTerm) {
-        console.log(`🔍 Recherche Matrix: "${searchTerm}"`);
+    async searchRoomByName(roomName) {
+        console.log(`Recherche salon: "${roomName}"`);
+        
+        try {
+            const syncFilter = {
+                room: {
+                    timeline: { limit: 0 },
+                    state: { types: ["m.room.name"] },
+                    ephemeral: { limit: 0 }
+                },
+                presence: { limit: 0 },
+                account_data: { limit: 0 }
+            };
+            
+            const url = new URL(`${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/sync`);
+            url.searchParams.append('filter', JSON.stringify(syncFilter));
+            url.searchParams.append('timeout', '0');
+            url.searchParams.append('full_state', 'true');
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.getHeaders()
+            });
+            
+            if (!response.ok) throw new Error(`Erreur sync: ${response.status}`);
+            
+            const syncData = await response.json();
+            const joinedRooms = syncData.rooms?.join || {};
+            
+            for (const [roomId, roomData] of Object.entries(joinedRooms)) {
+                const stateEvents = roomData.state?.events || [];
+                const nameEvent = stateEvents.find(event => event.type === 'm.room.name');
+                
+                if (nameEvent && nameEvent.content.name?.toLowerCase() === roomName.toLowerCase()) {
+                    console.log(`Salon existant trouvé: "${nameEvent.content.name}"`);
+                    return {
+                        room_id: roomId,
+                        name: nameEvent.content.name
+                    };
+                }
+            }
+            
+            console.log("Aucun salon existant trouvé avec ce nom.");
+            return null;
+            
+        } catch (error) {
+            console.error('Erreur recherche salon:', error);
+            return null;
+        }
+    },
+
+    /**
+     * Recherche un utilisateur Matrix par nom pour obtenir son ID
+     */
+    async getMatrixIdByName(searchTerm) {
+        console.log(`Recherche de l'utilisateur '${searchTerm}' pour obtenir son ID Matrix...`);
         
         const searchData = {
             search_term: searchTerm,
-            limit: 20
+            limit: 1
         };
         
-        // Essayer différentes versions d'API
         const apiVersions = [CONFIG.MATRIX_API_VERSION, 'v3', 'r0'];
         
         for (const version of apiVersions) {
@@ -33,18 +90,24 @@ const MatrixAPI = {
                     {
                         method: 'POST',
                         headers: this.getHeaders(),
-                        body: JSON.stringify(searchData),
-                        timeout: CONFIG.API_TIMEOUT
+                        body: JSON.stringify(searchData)
                     }
                 );
                 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log(`✅ ${data.results.length} utilisateur(s) trouvé(s)`);
-                    return data.results;
+                    const results = data.results || [];
+                    
+                    if (results.length > 0) {
+                        const user = results[0];
+                        console.log(`Utilisateur trouvé: ${user.display_name || 'Nom inconnu'} (${user.user_id})`);
+                        return user;
+                    } else {
+                        console.log("Aucun utilisateur trouvé avec ce nom.");
+                        return null;
+                    }
                 }
                 
-                // Si 401, essayer avec token en query parameter
                 if (response.status === 401) {
                     const urlWithToken = `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${version}/user_directory/search?access_token=${CONFIG.MATRIX_ACCESS_TOKEN}`;
                     const response2 = await fetch(urlWithToken, {
@@ -55,7 +118,13 @@ const MatrixAPI = {
                     
                     if (response2.ok) {
                         const data = await response2.json();
-                        return data.results;
+                        const results = data.results || [];
+                        
+                        if (results.length > 0) {
+                            const user = results[0];
+                            console.log(`Utilisateur trouvé: ${user.display_name || 'Nom inconnu'} (${user.user_id})`);
+                            return user;
+                        }
                     }
                 }
                 
@@ -65,27 +134,25 @@ const MatrixAPI = {
             }
         }
         
-        return [];
+        console.log("Aucun utilisateur trouvé avec ce nom.");
+        return null;
     },
 
+    // ========================================
+    // ### SECTION 2: GESTION DES SALONS ###
+    // ========================================
+
     /**
-     * Crée un salon Matrix
+     * Crée un salon Matrix avec un utilisateur
      */
-    async createRoom(userId, roomName = null) {
-        console.log(`🏠 Création d'un salon avec ${userId}`);
-        
-        // Vérifier le cache
-        const cacheKey = `room_${userId}`;
-        if (AppState.roomCache.has(cacheKey)) {
-            console.log('📦 Salon trouvé dans le cache');
-            return AppState.roomCache.get(cacheKey);
-        }
+    async createRoom(matrixUserId, roomName) {
+        console.log(`Création d'un salon avec '${matrixUserId}'...`);
         
         const roomData = {
             preset: "trusted_private_chat",
             is_direct: true,
-            invite: [userId],
-            name: roomName || `Notification - ${new Date().toLocaleDateString('fr-FR')}`
+            name: roomName,
+            invite: [matrixUserId]
         };
         
         try {
@@ -99,7 +166,6 @@ const MatrixAPI = {
             );
             
             if (!response.ok) {
-                // Retry avec token en query parameter si 401
                 if (response.status === 401) {
                     const urlWithToken = `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/createRoom?access_token=${CONFIG.MATRIX_ACCESS_TOKEN}`;
                     const response2 = await fetch(urlWithToken, {
@@ -110,80 +176,68 @@ const MatrixAPI = {
                     
                     if (response2.ok) {
                         const data = await response2.json();
-                        AppState.roomCache.set(cacheKey, data.room_id);
+                        console.log(`Salon créé avec succès ! Room ID: ${data.room_id}`);
                         return data.room_id;
                     }
                 }
                 
-                throw new Error(`Erreur création salon: ${response.status}`);
+                throw new Error(`Échec de la création du salon: ${response.status}`);
             }
             
             const data = await response.json();
-            console.log(`✅ Salon créé: ${data.room_id}`);
-            
-            // Mettre en cache
-            AppState.roomCache.set(cacheKey, data.room_id);
-            
+            console.log(`Salon créé avec succès ! Room ID: ${data.room_id}`);
             return data.room_id;
             
         } catch (error) {
-            console.error('Erreur création salon:', error);
+            console.error('Erreur lors de la création du salon:', error);
             throw error;
         }
     },
 
     /**
-     * Crée un salon de groupe
+     * Récupère les membres d'un salon
      */
-    async createGroupRoom(groupName, memberIds = []) {
-        console.log(`👥 Création d'un salon de groupe: ${groupName}`);
-        
-        const roomData = {
-            preset: "private_chat",
-            name: groupName,
-            topic: `Groupe de notification: ${groupName}`,
-            invite: memberIds,
-            initial_state: [
-                {
-                    type: "m.room.guest_access",
-                    state_key: "",
-                    content: {
-                        guest_access: "forbidden"
-                    }
-                }
-            ]
-        };
-        
+    async getRoomMembers(roomId) {
         try {
             const response = await fetch(
-                `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/createRoom`,
+                `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/rooms/${roomId}/members`,
                 {
-                    method: 'POST',
-                    headers: this.getHeaders(),
-                    body: JSON.stringify(roomData)
+                    method: 'GET',
+                    headers: this.getHeaders()
                 }
             );
             
-            if (!response.ok) {
-                throw new Error(`Erreur création salon groupe: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`Erreur récupération des membres: ${response.status}`);
             
             const data = await response.json();
-            console.log(`✅ Salon groupe créé: ${data.room_id}`);
+            const members = [];
             
-            return data.room_id;
+            for (const event of data.chunk || []) {
+                if (event.content?.membership === 'join') {
+                    members.push({
+                        user_id: event.state_key,
+                        display_name: event.content.displayname || event.state_key.split(':')[0].substring(1)
+                    });
+                }
+            }
+            
+            return members;
             
         } catch (error) {
-            console.error('Erreur création salon groupe:', error);
-            throw error;
+            console.error('Erreur lors de la récupération des membres:', error);
+            return [];
         }
     },
+
+    // ========================================
+    // ### SECTION 3: ENVOI DE MESSAGES ###
+    // ========================================
 
     /**
      * Envoie un message dans un salon
      */
     async sendMessage(roomId, message) {
-        console.log(`📨 Envoi message dans ${roomId}`);
+        console.log(`Envoi message dans ${roomId}`);
         
         const messageData = {
             msgtype: "m.text",
@@ -210,7 +264,6 @@ const MatrixAPI = {
             );
             
             if (!response.ok) {
-                // Retry avec token en query parameter si 401
                 if (response.status === 401) {
                     const urlWithToken = `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/rooms/${roomId}/send/m.room.message/${txnId}?access_token=${CONFIG.MATRIX_ACCESS_TOKEN}`;
                     const response2 = await fetch(urlWithToken, {
@@ -221,7 +274,7 @@ const MatrixAPI = {
                     
                     if (response2.ok) {
                         const data = await response2.json();
-                        console.log(`✅ Message envoyé: ${data.event_id}`);
+                        console.log(`Message envoyé: ${data.event_id}`);
                         return data.event_id;
                     }
                 }
@@ -230,123 +283,12 @@ const MatrixAPI = {
             }
             
             const data = await response.json();
-            console.log(`✅ Message envoyé: ${data.event_id}`);
+            console.log(`Message envoyé: ${data.event_id}`);
             return data.event_id;
             
         } catch (error) {
             console.error('Erreur envoi message:', error);
             throw error;
-        }
-    },
-
-    /**
-     * Récupère les salons rejoints
-     */
-    async getJoinedRooms() {
-        try {
-            const response = await fetch(
-                `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/joined_rooms`,
-                {
-                    method: 'GET',
-                    headers: this.getHeaders()
-                }
-            );
-            
-            if (!response.ok) {
-                throw new Error(`Erreur récupération salons: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data.joined_rooms || [];
-            
-        } catch (error) {
-            console.error('Erreur récupération salons:', error);
-            return [];
-        }
-    },
-
-    /**
-     * Invite un utilisateur dans un salon
-     */
-    async inviteToRoom(roomId, userId) {
-        console.log(`➕ Invitation de ${userId} dans ${roomId}`);
-        
-        try {
-            const response = await fetch(
-                `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/rooms/${roomId}/invite`,
-                {
-                    method: 'POST',
-                    headers: this.getHeaders(),
-                    body: JSON.stringify({ user_id: userId })
-                }
-            );
-            
-            if (!response.ok) {
-                throw new Error(`Erreur invitation: ${response.status}`);
-            }
-            
-            console.log(`✅ ${userId} invité avec succès`);
-            return true;
-            
-        } catch (error) {
-            console.error('Erreur invitation:', error);
-            return false;
-        }
-    },
-
-    /**
-     * Récupère les informations d'un salon
-     */
-    async getRoomInfo(roomId) {
-        try {
-            const response = await fetch(
-                `${CONFIG.MATRIX_HOMESERVER}/_matrix/client/${CONFIG.MATRIX_API_VERSION}/rooms/${roomId}/state`,
-                {
-                    method: 'GET',
-                    headers: this.getHeaders()
-                }
-            );
-            
-            if (!response.ok) {
-                throw new Error(`Erreur récupération info salon: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data;
-            
-        } catch (error) {
-            console.error('Erreur récupération info salon:', error);
-            return null;
-        }
-    },
-
-    /**
-     * Vérifie si un salon existe déjà avec un utilisateur
-     */
-    async findDirectRoom(userId) {
-        try {
-            const rooms = await this.getJoinedRooms();
-            
-            // Pour chaque salon, vérifier s'il s'agit d'un salon direct avec l'utilisateur
-            for (const roomId of rooms) {
-                const roomInfo = await this.getRoomInfo(roomId);
-                
-                // Vérifier si c'est un salon direct avec l'utilisateur spécifié
-                const members = roomInfo.filter(event => event.type === 'm.room.member');
-                const isDirect = members.length === 2 && 
-                                members.some(m => m.state_key === userId);
-                
-                if (isDirect) {
-                    console.log(`📦 Salon direct existant trouvé: ${roomId}`);
-                    return roomId;
-                }
-            }
-            
-            return null;
-            
-        } catch (error) {
-            console.error('Erreur recherche salon direct:', error);
-            return null;
         }
     }
 };
