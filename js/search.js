@@ -52,7 +52,7 @@ function performSearch(query) {
     
     setTimeout(() => {
         const mockResults = type === 'individual' ? [
-            { user_id: `@${query.toLowerCase()}:example.com`, display_name: `${query} (recherché)`, avatar_url: null }
+            { user_id: `@${query.toLowerCase()}:example.com`, display_name: `${query}`, avatar_url: null }
         ] : [
             { id: `group_${query}`, name: `Groupe ${query}`, members: Math.floor(Math.random() * 10) + 1 }
         ];
