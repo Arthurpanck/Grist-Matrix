@@ -1,6 +1,14 @@
 // === INITIALISATION ===
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     console.log('DOM loaded, initialisation...');
+    
+    // Initialiser Grist
+    await GristModule.init();
+    
+    // Vérifier si le token est configuré
+    if (!CONFIG.MATRIX_ACCESS_TOKEN) {
+        document.getElementById('config-section').style.display = 'block';
+    }
     
     // Onglets
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -106,23 +114,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Configuration Matrix
-    const saveTokenBtn = document.getElementById('save-token-btn');
-    if (saveTokenBtn) {
-        saveTokenBtn.addEventListener('click', () => {
-            const tokenInput = document.getElementById('matrix-token-input');
-            const token = tokenInput.value.trim();
-            
-            if (!token) {
-                showToast('Veuillez entrer un token valide', 'error');
-                return;
-            }
-            
-            showToast('Token Matrix sauvegardé', 'success');
-            document.getElementById('config-section').style.display = 'none';
-        });
-    }
-
-    // Configuration Matrix - dans la section DOMContentLoaded
     const saveTokenBtn = document.getElementById('save-token-btn');
     if (saveTokenBtn) {
         saveTokenBtn.addEventListener('click', async () => {
