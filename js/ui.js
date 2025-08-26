@@ -122,5 +122,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Configuration Matrix - dans la section DOMContentLoaded
+    const saveTokenBtn = document.getElementById('save-token-btn');
+    if (saveTokenBtn) {
+        saveTokenBtn.addEventListener('click', async () => {
+            const tokenInput = document.getElementById('matrix-token-input');
+            const token = tokenInput.value.trim();
+            
+            if (!token) {
+                showToast('Veuillez entrer un token valide', 'error');
+                return;
+            }
+            
+            // Mettre à jour la config
+            CONFIG.MATRIX_ACCESS_TOKEN = token;
+            
+            // Sauvegarder dans Grist
+            await GristModule.saveOptions();
+            
+            showToast('Token Matrix sauvegardé', 'success');
+            document.getElementById('config-section').style.display = 'none';
+        });
+    }
+
     console.log('Initialisation terminée');
 });
