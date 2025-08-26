@@ -13,25 +13,16 @@ const NotificationManager = {
                 failed: []
             };
             
-            // Traiter les destinataires individuels
-            for (const recipient of AppState.selectedIndividuals) {
+            // Traiter tous les destinataires (individuels et groupes) de la même façon
+            const allRecipients = [...AppState.selectedIndividuals, ...AppState.selectedGroups];
+            
+            for (const recipient of allRecipients) {
                 try {
-                    await this.sendToIndividual(recipient, message);
+                    await this.sendNotification(recipient, message);
                     results.success.push(recipient);
                 } catch (error) {
                     console.error(`Erreur envoi à ${recipient.name}:`, error);
                     results.failed.push({...recipient, error: error.message});
-                }
-            }
-            
-            // Traiter les groupes
-            for (const group of AppState.selectedGroups) {
-                try {
-                    await this.sendToGroup(group, message);
-                    results.success.push(group);
-                } catch (error) {
-                    console.error(`Erreur envoi au groupe ${group.name}:`, error);
-                    results.failed.push({...group, error: error.message});
                 }
             }
             
@@ -45,62 +36,51 @@ const NotificationManager = {
         }
     },
 
-    async sendToIndividual(recipient, message) {
-        console.log(`📤 Envoi à ${recipient.name}`);
+    async sendNotification(recipient, message) {
+        console.log(`Envoi à ${recipient.name || recipient.display_name}`);
         
-        let roomId = recipient.roomId;
+        // 1. Créer le nom du salon selon votre format
+        const roomName = `Alerte Grist : ${recipient.display_name || recipient.name}`;
         
-        if (!roomId) {
-            let matrixId = recipient.matrixId;
+        // 2. Chercher salon existant par nom
+        let roomInfo = await MatrixAPI.searchRoomByName(roomName);
+        
+        if (roomInfo) {
+            // Salon trouvé - récupérer les membres
+            const members = await MatrixAPI.getRoomMembers(roomInfo.room_id);
+            roomInfo.members = members;
             
-            if (!matrixId) {
-                const users = await MatrixAPI.searchUsers(recipient.email || recipient.name);
-                if (users.length === 0) {
-                    throw new Error(`Utilisateur Matrix non trouvé: ${recipient.name}`);
-                }
-                matrixId = users[0].user_id;
-                recipient.matrixId = matrixId;
+            console.log(`Salon existant utilisé: ${roomInfo.name}`);
+        } else {
+            // 3. Si pas trouvé, chercher l'utilisateur par nom
+            const userInfo = await MatrixAPI.getMatrixIdByName(recipient.display_name || recipient.name);
+            if (!userInfo) {
+                throw new Error(`Utilisateur Matrix non trouvé: ${recipient.name}`);
             }
             
-            roomId = await MatrixAPI.findDirectRoom(matrixId);
+            // 4. Créer le salon
+            const roomId = await MatrixAPI.createRoom(userInfo.user_id, roomName);
             
-            if (!roomId) {
-                roomId = await MatrixAPI.createRoom(matrixId, `Notifications - ${recipient.name}`);
-            }
+            // 5. Récupérer les membres du nouveau salon
+            const members = await MatrixAPI.getRoomMembers(roomId);
             
-            recipient.roomId = roomId;
+            roomInfo = {
+                room_id: roomId,
+                name: roomName,
+                members: members
+            };
+            
+            console.log(`Nouveau salon créé: ${roomInfo.name}`);
         }
         
-        const eventId = await MatrixAPI.sendMessage(roomId, message);
-        return { roomId, eventId };
-    },
-
-    async sendToGroup(group, message) {
-        console.log(`📤 Envoi au groupe ${group.name}`);
+        // 6. Sauvegarder dans l'état pour affichage
+        recipient.roomId = roomInfo.room_id;
+        recipient.roomName = roomInfo.name;
+        recipient.members = roomInfo.members;
         
-        let roomId = group.roomId;
+        // 7. Envoyer le message
+        const eventId = await MatrixAPI.sendMessage(roomInfo.room_id, message);
         
-        if (!roomId) {
-            const memberIds = [];
-            
-            if (group.members && group.members.length > 0) {
-                for (const member of group.members) {
-                    if (member.matrixId) {
-                        memberIds.push(member.matrixId);
-                    } else if (member.email || member.name) {
-                        const users = await MatrixAPI.searchUsers(member.email || member.name);
-                        if (users.length > 0) {
-                            memberIds.push(users[0].user_id);
-                        }
-                    }
-                }
-            }
-            
-            roomId = await MatrixAPI.createGroupRoom(group.name, memberIds);
-            group.roomId = roomId;
-        }
-        
-        const eventId = await MatrixAPI.sendMessage(roomId, message);
-        return { roomId, eventId };
+        return { roomId: roomInfo.room_id, eventId, members: roomInfo.members };
     }
 };
